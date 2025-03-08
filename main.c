@@ -49,7 +49,7 @@ int lsh_cd(char **args) {
 }
 
 int lsh_help(char **args) {
-    printf("Logan's Simple Shell\n");
+    printf("Logan's Lite Shell\n");
     printf("Type program names and arguments, then hit enter.\n");
     printf("The following are built-in commands:\n");
 
