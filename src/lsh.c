@@ -6,28 +6,42 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <dirent.h>
+#include </workspaces/terminal/src/read_line.h>
+#include </workspaces/terminal/src/create_syslog.h>
+
+// Command Headers
+#include "commands/reload.h"
+#include "commands/get.h"
+#include "commands/sudo.h"
 
 #define LSH_RL_BUFSIZE 1024
 #define LSH_TOK_BUFSIZE 64
 #define LSH_TOK_DELIM " \t\r\n\a"
+#define VERSION "0.2.1"
 
 // Function declarations for built-in shell commands
 int lsh_cd(char **args);
 int lsh_help(char **args);
 int lsh_exit(char **args);
-int lsh_reload(char **args);
+int lsh_version(char **args);
 
 // List of built-in commands
 char *builtin_str[] = {
     "cd",
+    "get",
     "help",
+    "sudo",
+    "version",
     "exit",
     "reload"
 };
 
 int (*builtin_func[]) (char **) = {
     &lsh_cd,
+    &lsh_get,
     &lsh_help,
+    &lsh_sudo,
+    &lsh_version,
     &lsh_exit,
     &lsh_reload
 };
@@ -36,7 +50,7 @@ int lsh_num_builtins() {
     return sizeof(builtin_str) / sizeof(char *);
 }
 
-// Built-in function implementations
+// Simple commands
 int lsh_cd(char **args) {
     if (args[1] == NULL) {
         fprintf(stderr, "lsh: expected argument to \"cd\"\n");
@@ -48,7 +62,14 @@ int lsh_cd(char **args) {
     return 1;
 }
 
+int lsh_version(char **args) {
+    (void)args;
+    printf("Lite Shell Version: %s\n", VERSION);
+    return 1;
+}
+
 int lsh_help(char **args) {
+    (void)args;
     printf("Logan's Lite Shell\n");
     printf("Type program names and arguments, then hit enter.\n");
     printf("The following are built-in commands:\n");
@@ -62,63 +83,14 @@ int lsh_help(char **args) {
 }
 
 int lsh_exit(char **args) {
+    (void)args;
     return 0;
-}
-
-int lsh_reload(char **args) {
-    printf("Reloading terminal...\n");
-
-    // Clear screen
-    printf("\033[H\033[J");
-
-    // Ensure .packages/bin directory exists
-    struct stat st;
-    if (stat(".packages/bin", &st) != 0) {
-        if (mkdir(".packages/bin", 0700) != 0) {
-            perror("lsh");
-            return 1;
-        }
-    }
-
-    DIR *dir;
-    struct dirent *entry;
-
-    dir = opendir(".packages");
-    if (dir == NULL) {
-        perror("lsh: failed to open .packages");
-        return 1;
-    }
-
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type == DT_REG) {  // Only regular files
-            char *filename = entry->d_name;
-            char *ext = strrchr(filename, '.');
-
-            if (ext && strcmp(ext, ".c") == 0) {  // Only compile .c files
-                char source_path[512], output_path[512], command[2048]; // Increased buffer size for command
-
-                snprintf(source_path, sizeof(source_path), ".packages/%s", filename);
-                snprintf(output_path, sizeof(output_path), ".packages/bin/%.*s", (int)(ext - filename), filename);
-
-                // Increased buffer size for the command
-                snprintf(command, sizeof(command), "gcc \"%s\" -o \"%s\" -w", source_path, output_path);
-
-                if (system(command) != 0) {
-                    fprintf(stderr, "lsh: failed to compile %s\n", filename);
-                } else {
-                    printf("Compiled: %s -> %s\n", source_path, output_path);
-                }
-            }
-        }
-    }
-
-    closedir(dir);
-    return 1;
 }
 
 // Function to launch processes
 int lsh_launch(char **args) {
     pid_t pid, wpid;
+    (void)wpid;
     int status;
 
     pid = fork();
@@ -141,6 +113,9 @@ int lsh_launch(char **args) {
 // Function to execute built-in or external commands
 int lsh_execute(char **args) {
     if (args[0] == NULL) {
+        char log[256];
+        sprintf(log, "[LSH]: Command %s failed. Reason: ARG_NULL", args[0]);
+        create_syslog(log);
         return 1;
     }
 
@@ -170,14 +145,6 @@ int lsh_execute(char **args) {
     }
 
     return lsh_launch(args);  // Default shell execution
-}
-
-// Function to read input line
-char *lsh_read_line(void) {
-    char *line = NULL;
-    size_t bufsize = 0;
-    getline(&line, &bufsize, stdin);
-    return line;
 }
 
 // Function to split input into tokens
@@ -231,6 +198,8 @@ void lsh_loop(void) {
 
 // Main function
 int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
     lsh_loop();
     return EXIT_SUCCESS;
 }
